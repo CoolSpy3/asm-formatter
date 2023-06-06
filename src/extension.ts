@@ -7,7 +7,8 @@ const valueRegex = /((?:[^\s;]|.+(?=[^ ;]))+)/;
 const commentRegex = / *;?(.*)/;
 const defineRegex = RegExp(/^(\s*)%define *(\S+) */.source + valueRegex.source+ commentRegex.source);
 const labelRegex = RegExp(/^(\s*)(\S+) +(db|dw|dd|dq|equ) +/.source + valueRegex.source + commentRegex.source);
-const commandRegex = RegExp(/^(\s*)(\/S+)/.source + ("(?: *" + valueRegex.source + ("(?: *, *" + valueRegex.source + ")?)?")) + commentRegex.source);
+const instructionRegex = /([^\s;]+) +([^\s;]+)(?! *,)/; // This is slightly different than the regex on the following line
+const commandRegex = RegExp(/^(\s*)([^\s;]+(?: +[^\s;]+(?! *,)))/.source + ("(?: *" + valueRegex.source + ("(?: *, *" + valueRegex.source + ")?)?")) + commentRegex.source);
 const validLineRegex = RegExp(`^(?:${defineRegex.source}|${labelRegex.source}|${commandRegex.source})$`);
 
 enum LineType { define, label, command }
@@ -187,8 +188,12 @@ export function activate(context: vscode.ExtensionContext) {
 								if (match === null) { printCouldNotMatchWarning(); continue; }
 
 								function addSpaceToConditionalValue(val: string): string { return val === undefined ? "" : `${val} `; }
+								function formatInstruction(cmd: string): string {
+									const parsedInstruction = instructionRegex.exec(cmd);
+									return parsedInstruction === null ? cmd : `${parsedInstruction[1]} ${parsedInstruction[2]}`;
+								}
 
-								var formattedLine = `${match[1]}${match[2]}${getConditionalValue(nameLength, match[2], match[3])}${match[3] === undefined ? "" : getConditionalValue(operand1Length, match[3], match[4])}${getConditionalValue(nameLength + (operand1Length === 0 ? 0 : operand1Length + 1) + (operand2Length === 0 ? 0 : operand2Length + 1), match[2] + " " + addSpaceToConditionalValue(match[3]) + addSpaceToConditionalValue(match[4]), match[5])}`;
+								var formattedLine = `${match[1]}${formatInstruction(match[2])}${getConditionalValue(nameLength, match[2], match[3])}${match[3] === undefined ? "" : getConditionalValue(operand1Length, match[3], match[4])}${getConditionalValue(nameLength + (operand1Length === 0 ? 0 : operand1Length + 1) + (operand2Length === 0 ? 0 : operand2Length + 1), match[2] + " " + addSpaceToConditionalValue(match[3]) + addSpaceToConditionalValue(match[4]), match[5])}`;
 
 								break;
 							}
