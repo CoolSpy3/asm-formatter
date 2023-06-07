@@ -8,7 +8,7 @@ const commentRegex = / *;?(.*)/;
 const defineRegex = RegExp(/^(\s*)%define *(\S+) */.source + valueRegex.source+ commentRegex.source);
 const labelRegex = RegExp(/^(\s*)(\S+) +(db|dw|dd|dq|equ) +/.source + valueRegex.source + commentRegex.source);
 const instructionRegex = /([^\s;]+) +([^\s;]+)(?! *,)/; // This is slightly different than the regex on the following line
-const commandRegex = RegExp(/^(\s*)([^\s;]+(?: +[^\s;]+(?! *,)))/.source + ("(?: *" + valueRegex.source + ("(?: *, *" + valueRegex.source + ")?)?")) + commentRegex.source);
+const commandRegex = RegExp(/^(\s*)([^\s;]+(?: +[^\s;]+(?! *,)))/.source + ("(?: +" + valueRegex.source + ("(?: *, *" + valueRegex.source + ")?)?")) + commentRegex.source);
 const validLineRegex = RegExp(`^(?:${defineRegex.source}|${labelRegex.source}|${commandRegex.source})$`);
 
 enum LineType { define, label, command }
@@ -67,8 +67,10 @@ export function activate(context: vscode.ExtensionContext) {
 				let typeLength = 0;
 				let valueLength = 0;
 				let instructionLength = 0;
+				let singleOperandLength = 0;
 				let operand1Length = 0;
 				let operand2Length = 0;
+				let lineLength = 0;
 
 				// Calculate all of the above lengths (if applicable)
 				{
@@ -79,6 +81,8 @@ export function activate(context: vscode.ExtensionContext) {
 
 							nameLength = match[2].length;
 							valueLength = match[3].length;
+
+							lineLength = `%define ${match[2]} ${match[3]}`.length;
 							break;
 						}
 
@@ -89,6 +93,8 @@ export function activate(context: vscode.ExtensionContext) {
 							nameLength = match[2].length;
 							typeLength = match[3].length;
 							valueLength = match[4].length;
+
+							lineLength = `${match[2]} ${match[3]} ${match[4]}`.length;
 							break;
 						}
 
@@ -97,8 +103,21 @@ export function activate(context: vscode.ExtensionContext) {
 							if (match === null) { printCouldNotMatchWarning(); continue; }
 
 							instructionLength = match[2].length;
-							operand1Length = match[3]?.length ?? 0;
-							operand2Length = match[4]?.length ?? 0;
+
+							if(match[4] === undefined) {
+								singleOperandLength = match[3]?.length ?? 0;
+							} else {
+								operand1Length = match[3]?.length ?? 0;
+								operand2Length = match[4].length ?? 0;
+							}
+
+							if(match[3] === undefined) {
+								lineLength = match[2].length;
+							} else if(match[4] === undefined) {
+								lineLength = `${match[2]} ${match[3]}`.length;
+							} else {
+								lineLength = `${match[2]} ${match[3]}, ${match[4]}`.length;
+							}
 
 							break;
 						}
@@ -122,6 +141,8 @@ export function activate(context: vscode.ExtensionContext) {
 
 								nameLength = Math.max(nameLength, match[2].length);
 								valueLength = Math.max(valueLength, match[3].length);
+
+								lineLength = Math.max(lineLength, `%define ${match[2]} ${match[3]}`.length);
 								break;
 							}
 
@@ -132,6 +153,8 @@ export function activate(context: vscode.ExtensionContext) {
 								nameLength = Math.max(nameLength, match[2].length);
 								typeLength = Math.max(typeLength, match[3].length);
 								valueLength = Math.max(valueLength, match[4].length);
+
+								lineLength = Math.max(lineLength, `${match[2]} ${match[3]} ${match[4]}`.length);
 								break;
 							}
 
@@ -140,8 +163,22 @@ export function activate(context: vscode.ExtensionContext) {
 								if (match === null) { printCouldNotMatchWarning(); continue; }
 
 								instructionLength = Math.max(instructionLength, match[2].length);
-								operand1Length = Math.max(operand1Length, match[3]?.length ?? 0);
-								operand2Length = Math.max(operand2Length, match[4]?.length ?? 0);
+
+								if(match[4] === undefined) {
+									singleOperandLength = Math.max(singleOperandLength, match[3]?.length ?? 0);
+								} else {
+									operand1Length = Math.max(operand1Length, match[3]?.length ?? 0);
+									operand2Length = Math.max(operand2Length, match[4].length ?? 0);
+								}
+
+								if(match[3] === undefined) {
+									lineLength = Math.max(lineLength, match[2].length);
+								} else if(match[4] === undefined) {
+									lineLength = Math.max(lineLength, `${match[2]} ${match[3]}`.length);
+								} else {
+									lineLength = Math.max(lineLength, `${match[2]} ${match[3]}, ${match[4]}`.length);
+								}
+
 								break;
 							}
 
@@ -156,7 +193,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 				// Apply the calculated lengths
 				{
-					function getConditionalValue(sectionLength: number, prevValue: string, match: string | undefined) {
+					function getConditionalValue(sectionLength: number, prevValue: string, match: string | undefined, hasComma: boolean = false): string {
 						return match === undefined ? "" : `${" ".repeat(sectionLength - prevValue.length + 1)}${match}`;
 					}
 
@@ -169,7 +206,9 @@ export function activate(context: vscode.ExtensionContext) {
 								const match = defineRegex.exec(line.text);
 								if (match === null) { printCouldNotMatchWarning(); continue; }
 
-								var formattedLine = `${match[1]}%define ${match[2]}${" ".repeat(nameLength - match[2].length + 1)}${match[3]}${getConditionalValue(valueLength, match[3], match[4])}`;
+								var formattedLine = `${match[1]}%define ${match[2]}${" ".repeat(nameLength - match[2].length + 1)}${match[3]}`;
+
+								formattedLine += getConditionalValue(lineLength, formattedLine.substring(match[1].length), match[4]);
 
 								break;
 							}
@@ -178,7 +217,9 @@ export function activate(context: vscode.ExtensionContext) {
 								const match = labelRegex.exec(line.text);
 								if (match === null) { printCouldNotMatchWarning(); continue; }
 
-								var formattedLine = `${match[1]}${match[2]}${" ".repeat(nameLength - match[2].length + 1)}${match[3]}${" ".repeat(typeLength - match[3].length + 1)}${match[4]}${getConditionalValue(valueLength, match[4], match[5])}`;
+								var formattedLine = `${match[1]}${match[2]}${" ".repeat(nameLength - match[2].length + 1)}${match[3]}${" ".repeat(typeLength - match[3].length + 1)}${match[4]}`;
+
+								formattedLine += getConditionalValue(lineLength, formattedLine.substring(match[1].length), match[5]);
 
 								break;
 							}
@@ -193,7 +234,9 @@ export function activate(context: vscode.ExtensionContext) {
 									return parsedInstruction === null ? cmd : `${parsedInstruction[1]} ${parsedInstruction[2]}`;
 								}
 
-								var formattedLine = `${match[1]}${formatInstruction(match[2])}${getConditionalValue(nameLength, match[2], match[3])}${match[3] === undefined ? "" : getConditionalValue(operand1Length, match[3], match[4])}${getConditionalValue(nameLength + (operand1Length === 0 ? 0 : operand1Length + 1) + (operand2Length === 0 ? 0 : operand2Length + 1), match[2] + " " + addSpaceToConditionalValue(match[3]) + addSpaceToConditionalValue(match[4]), match[5])}`;
+								var formattedLine = `${match[1]}${formatInstruction(match[2])}${getConditionalValue(nameLength, match[2], match[3])}${getConditionalValue(operand1Length, match[3], match[4], true)}`;
+
+								formattedLine += getConditionalValue(lineLength, formattedLine.substring(match[1].length), match[5]);
 
 								break;
 							}
