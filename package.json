@@ -10,6 +10,12 @@
 		"Formatters"
 	],
 	"main": "./dist/extension.js",
+	"activationEvents": [
+		"onLanguage:asm",
+		"onLanguage:masm",
+		"onLanguage:mips",
+		"onLanguage:nasm"
+	],
 	"scripts": {
 		"vscode:prepublish": "npm run package",
 		"compile": "webpack",

@@ -3,13 +3,13 @@
 import * as vscode from 'vscode';
 
 // For simplicity, we only support spaces between tokens, so we don't use \s
-const valueRegex = /((?:[^\s;]|.+(?=[^ ;]))+)/;
-const commentRegex = / *;?(.*)/;
-const defineRegex = RegExp(/^(\s*)%define *(\S+) */.source + valueRegex.source+ commentRegex.source);
+const valueRegex = /((?:[^\s;,]|[^,;]+(?=[^ ;]))+)/;
+const commentRegex = / *;?(.*)$/;
+const defineRegex = RegExp(/^(\s*)%define *(\S+) */.source + valueRegex.source + commentRegex.source);
 const labelRegex = RegExp(/^(\s*)(\S+) +(db|dw|dd|dq|equ) +/.source + valueRegex.source + commentRegex.source);
 const instructionRegex = /([^\s;]+) +([^\s;]+)(?! *,)/; // This is slightly different than the regex on the following line
-const commandRegex = RegExp(/^(\s*)([^\s;]+(?: +[^\s;]+(?! *,)))/.source + ("(?: +" + valueRegex.source + ("(?: *, *" + valueRegex.source + ")?)?")) + commentRegex.source);
-const validLineRegex = RegExp(`^(?:${defineRegex.source}|${labelRegex.source}|${commandRegex.source})$`);
+const commandRegex = RegExp(/^(\s*)([^\s;]+(?: +[^\s;,]+(?= *;| +[^\s,]))?)/.source + ("(?: +" + valueRegex.source + ("(?: *, *" + valueRegex.source + ")?)?")) + commentRegex.source);
+const validLineRegex = RegExp(`(?:${defineRegex.source}|${labelRegex.source}|${commandRegex.source})`);
 
 enum LineType { define, label, command }
 
@@ -46,7 +46,7 @@ function findSectionEnd(document: vscode.TextDocument, lineRangeStart: number): 
 // your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
 
-	context.subscriptions.push(vscode.languages.registerDocumentFormattingEditProvider(['asm', 'masm', 'nasm'], {
+	context.subscriptions.push(vscode.languages.registerDocumentFormattingEditProvider(['asm', 'masm', 'mips', 'nasm'], {
 		provideDocumentFormattingEdits(document: vscode.TextDocument): vscode.TextEdit[] {
 			let edits: vscode.TextEdit[] = [];
 
@@ -104,16 +104,16 @@ export function activate(context: vscode.ExtensionContext) {
 
 							instructionLength = match[2].length;
 
-							if(match[4] === undefined) {
+							if (match[4] === undefined) {
 								singleOperandLength = match[3]?.length ?? 0;
 							} else {
 								operand1Length = match[3]?.length ?? 0;
 								operand2Length = match[4].length ?? 0;
 							}
 
-							if(match[3] === undefined) {
+							if (match[3] === undefined) {
 								lineLength = match[2].length;
-							} else if(match[4] === undefined) {
+							} else if (match[4] === undefined) {
 								lineLength = `${match[2]} ${match[3]}`.length;
 							} else {
 								lineLength = `${match[2]} ${match[3]}, ${match[4]}`.length;
@@ -132,7 +132,7 @@ export function activate(context: vscode.ExtensionContext) {
 					for (let i = lineRangeStart + 1; i < lineRangeEnd; i++) {
 
 						line = document.lineAt(i);
-						if(!validLineRegex.test(line.text)) { continue; }
+						if (!validLineRegex.test(line.text)) { continue; }
 
 						switch (lineType) {
 							case LineType.define: {
@@ -164,20 +164,15 @@ export function activate(context: vscode.ExtensionContext) {
 
 								instructionLength = Math.max(instructionLength, match[2].length);
 
-								if(match[4] === undefined) {
+								if (match[4] === undefined) {
 									singleOperandLength = Math.max(singleOperandLength, match[3]?.length ?? 0);
 								} else {
 									operand1Length = Math.max(operand1Length, match[3]?.length ?? 0);
 									operand2Length = Math.max(operand2Length, match[4].length ?? 0);
 								}
 
-								if(match[3] === undefined) {
-									lineLength = Math.max(lineLength, match[2].length);
-								} else if(match[4] === undefined) {
-									lineLength = Math.max(lineLength, `${match[2]} ${match[3]}`.length);
-								} else {
-									lineLength = Math.max(lineLength, `${match[2]} ${match[3]}, ${match[4]}`.length);
-								}
+								lineLength = Math.max(lineLength, instructionLength + singleOperandLength + 1); // +1 for the space between the instruction and the operand
+								lineLength = Math.max(lineLength, instructionLength + operand1Length + operand2Length + 3); // +3 for the spaces between the instruction and the operands and the comma
 
 								break;
 							}
@@ -193,13 +188,13 @@ export function activate(context: vscode.ExtensionContext) {
 
 				// Apply the calculated lengths
 				{
-					function getConditionalValue(sectionLength: number, prevValue: string, match: string | undefined, hasComma: boolean = false): string {
+					function getConditionalValue(sectionLength: number, prevValue: string, match: string | undefined): string {
 						return match === undefined ? "" : `${" ".repeat(sectionLength - prevValue.length + 1)}${match}`;
 					}
 
-					for(let i = lineRangeStart; i < lineRangeEnd; i++) {
+					for (let i = lineRangeStart; i < lineRangeEnd; i++) {
 						line = document.lineAt(i);
-						if(!validLineRegex.test(line.text)) { continue; }
+						if (!validLineRegex.test(line.text)) { continue; }
 
 						switch (lineType) {
 							case LineType.define: {
@@ -208,7 +203,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 								var formattedLine = `${match[1]}%define ${match[2]}${" ".repeat(nameLength - match[2].length + 1)}${match[3]}`;
 
-								formattedLine += getConditionalValue(lineLength, formattedLine.substring(match[1].length), match[4]);
+								formattedLine += getConditionalValue(lineLength, formattedLine.substring(match[1].length), match[4] === undefined ? undefined : `;${match[4]}`);
 
 								break;
 							}
@@ -219,7 +214,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 								var formattedLine = `${match[1]}${match[2]}${" ".repeat(nameLength - match[2].length + 1)}${match[3]}${" ".repeat(typeLength - match[3].length + 1)}${match[4]}`;
 
-								formattedLine += getConditionalValue(lineLength, formattedLine.substring(match[1].length), match[5]);
+								formattedLine += getConditionalValue(lineLength, formattedLine.substring(match[1].length), match[5] === undefined ? undefined : `;${match[5]}`);
 
 								break;
 							}
@@ -228,15 +223,14 @@ export function activate(context: vscode.ExtensionContext) {
 								const match = commandRegex.exec(line.text);
 								if (match === null) { printCouldNotMatchWarning(); continue; }
 
-								function addSpaceToConditionalValue(val: string): string { return val === undefined ? "" : `${val} `; }
 								function formatInstruction(cmd: string): string {
 									const parsedInstruction = instructionRegex.exec(cmd);
 									return parsedInstruction === null ? cmd : `${parsedInstruction[1]} ${parsedInstruction[2]}`;
 								}
 
-								var formattedLine = `${match[1]}${formatInstruction(match[2])}${getConditionalValue(nameLength, match[2], match[3])}${getConditionalValue(operand1Length, match[3], match[4], true)}`;
+								var formattedLine = `${match[1]}${formatInstruction(match[2])}${getConditionalValue(instructionLength, match[2], match[3])}${match[4] === undefined ? '' : ','}${match[3] === undefined ? '' : getConditionalValue(operand1Length, match[3], match[4])}`;
 
-								formattedLine += getConditionalValue(lineLength, formattedLine.substring(match[1].length), match[5]);
+								formattedLine += getConditionalValue(lineLength, formattedLine.substring(match[1].length), match[5] === undefined ? undefined : `;${match[5]}`);
 
 								break;
 							}
@@ -247,7 +241,7 @@ export function activate(context: vscode.ExtensionContext) {
 							}
 						}
 
-						if(line.text !== formattedLine) { edits.push(vscode.TextEdit.replace(line.range, formattedLine)); }
+						if (line.text !== formattedLine) { edits.push(vscode.TextEdit.replace(line.range, formattedLine)); }
 					}
 				}
 
