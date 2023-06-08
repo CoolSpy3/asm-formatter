@@ -8,13 +8,13 @@ const commentRegex = / *;?(.*)$/;
 const defineRegex = RegExp(/^(\s*)%define *(\S+) */.source + valueRegex.source + commentRegex.source);
 const labelRegex = RegExp(/^(\s*)(\S+) +(db|dw|dd|dq|equ) +/.source + valueRegex.source + commentRegex.source);
 const instructionRegex = /([^\s;]+) +([^\s;]+)(?! *,)/; // This is slightly different than the regex on the following line
-const commandRegex = RegExp(/^(\s*)([^\s;]+(?: +[^\s;,]+(?= *;| +[^\s,]))?)/.source + ("(?: +" + valueRegex.source + ("(?: *, *" + valueRegex.source + ")?)?")) + commentRegex.source);
-const validLineRegex = RegExp(`(?:${defineRegex.source}|${labelRegex.source}|${commandRegex.source})`);
+const commandRegex = RegExp(/^(\s*)((?<!%)[^\s;]+(?! *:)(?: +[^\s;,]+(?= *;| +[^\s,]))?)/.source + ("(?: +" + valueRegex.source + ("(?: *, *" + valueRegex.source + ")?)?")) + commentRegex.source);
+const validLineRegex = RegExp(`(?<!\\[)(?:${defineRegex.source}|${labelRegex.source}|${commandRegex.source})`);
 
 enum LineType { define, label, command }
 
 function getLineWhitespaceCount(line: string, tabSize: number): number {
-	return validLineRegex.exec(line)?.[0].replaceAll("\t", " ".repeat(tabSize)).length ?? 0;
+	return validLineRegex.exec(line)?.[1]?.replaceAll("\t", " ".repeat(tabSize)).length ?? 0;
 }
 
 function getLineType(line: string): LineType | undefined {
@@ -61,6 +61,8 @@ export function activate(context: vscode.ExtensionContext) {
 				let line = document.lineAt(lineRangeStart);
 				const lineType = getLineType(line.text);
 
+				console.log(`Lines ${lineRangeStart} to ${lineRangeEnd} are of type: ${lineType?.toString()}!`)
+
 				function printCouldNotMatchWarning() { console.warn(`Could not match line \"${line.text}\" to expected regex ${lineType}!`); }
 
 				let nameLength = 0;
@@ -77,7 +79,7 @@ export function activate(context: vscode.ExtensionContext) {
 					switch (lineType) {
 						case LineType.define: {
 							const match = defineRegex.exec(line.text);
-							if (match === null) { printCouldNotMatchWarning(); continue; }
+							if (!match) { printCouldNotMatchWarning(); continue; }
 
 							nameLength = match[2].length;
 							valueLength = match[3].length;
@@ -88,7 +90,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 						case LineType.label: {
 							const match = labelRegex.exec(line.text);
-							if (match === null) { printCouldNotMatchWarning(); continue; }
+							if (!match) { printCouldNotMatchWarning(); continue; }
 
 							nameLength = match[2].length;
 							typeLength = match[3].length;
@@ -100,20 +102,20 @@ export function activate(context: vscode.ExtensionContext) {
 
 						case LineType.command: {
 							const match = commandRegex.exec(line.text);
-							if (match === null) { printCouldNotMatchWarning(); continue; }
+							if (!match) { printCouldNotMatchWarning(); continue; }
 
 							instructionLength = match[2].length;
 
-							if (match[4] === undefined) {
-								singleOperandLength = match[3]?.length ?? 0;
+							if (match[4]) {
+								operand1Length = match[3].length;
+								operand2Length = match[4].length;
 							} else {
-								operand1Length = match[3]?.length ?? 0;
-								operand2Length = match[4].length ?? 0;
+								singleOperandLength = match[3]?.length ?? 0;
 							}
 
-							if (match[3] === undefined) {
+							if (!match[3]) {
 								lineLength = match[2].length;
-							} else if (match[4] === undefined) {
+							} else if (!match[4]) {
 								lineLength = `${match[2]} ${match[3]}`.length;
 							} else {
 								lineLength = `${match[2]} ${match[3]}, ${match[4]}`.length;
@@ -137,7 +139,7 @@ export function activate(context: vscode.ExtensionContext) {
 						switch (lineType) {
 							case LineType.define: {
 								const match = defineRegex.exec(line.text);
-								if (match === null) { printCouldNotMatchWarning(); continue; }
+								if (!match) { printCouldNotMatchWarning(); continue; }
 
 								nameLength = Math.max(nameLength, match[2].length);
 								valueLength = Math.max(valueLength, match[3].length);
@@ -148,7 +150,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 							case LineType.label: {
 								const match = labelRegex.exec(line.text);
-								if (match === null) { printCouldNotMatchWarning(); continue; }
+								if (!match) { printCouldNotMatchWarning(); continue; }
 
 								nameLength = Math.max(nameLength, match[2].length);
 								typeLength = Math.max(typeLength, match[3].length);
@@ -160,15 +162,15 @@ export function activate(context: vscode.ExtensionContext) {
 
 							case LineType.command: {
 								const match = commandRegex.exec(line.text);
-								if (match === null) { printCouldNotMatchWarning(); continue; }
+								if (!match) { printCouldNotMatchWarning(); continue; }
 
 								instructionLength = Math.max(instructionLength, match[2].length);
 
-								if (match[4] === undefined) {
-									singleOperandLength = Math.max(singleOperandLength, match[3]?.length ?? 0);
+								if (match[4]) {
+									operand1Length = Math.max(operand1Length, match[3].length);
+									operand2Length = Math.max(operand2Length, match[4].length);
 								} else {
-									operand1Length = Math.max(operand1Length, match[3]?.length ?? 0);
-									operand2Length = Math.max(operand2Length, match[4].length ?? 0);
+									singleOperandLength = Math.max(singleOperandLength, match[3]?.length ?? 0);
 								}
 
 								lineLength = Math.max(lineLength, instructionLength + singleOperandLength + 1); // +1 for the space between the instruction and the operand
@@ -189,7 +191,7 @@ export function activate(context: vscode.ExtensionContext) {
 				// Apply the calculated lengths
 				{
 					function getConditionalValue(sectionLength: number, prevValue: string, match: string | undefined): string {
-						return match === undefined ? "" : `${" ".repeat(sectionLength - prevValue.length + 1)}${match}`;
+						return match ? `${" ".repeat(sectionLength - prevValue.length + 1)}${match}` : '';
 					}
 
 					for (let i = lineRangeStart; i < lineRangeEnd; i++) {
@@ -199,38 +201,38 @@ export function activate(context: vscode.ExtensionContext) {
 						switch (lineType) {
 							case LineType.define: {
 								const match = defineRegex.exec(line.text);
-								if (match === null) { printCouldNotMatchWarning(); continue; }
+								if (!match) { printCouldNotMatchWarning(); continue; }
 
 								var formattedLine = `${match[1]}%define ${match[2]}${" ".repeat(nameLength - match[2].length + 1)}${match[3]}`;
 
-								formattedLine += getConditionalValue(lineLength, formattedLine.substring(match[1].length), match[4] === undefined ? undefined : `;${match[4]}`);
+								formattedLine += getConditionalValue(lineLength, formattedLine.substring(match[1].length), match[4] ? `;${match[4]}` : undefined);
 
 								break;
 							}
 
 							case LineType.label: {
 								const match = labelRegex.exec(line.text);
-								if (match === null) { printCouldNotMatchWarning(); continue; }
+								if (!match) { printCouldNotMatchWarning(); continue; }
 
 								var formattedLine = `${match[1]}${match[2]}${" ".repeat(nameLength - match[2].length + 1)}${match[3]}${" ".repeat(typeLength - match[3].length + 1)}${match[4]}`;
 
-								formattedLine += getConditionalValue(lineLength, formattedLine.substring(match[1].length), match[5] === undefined ? undefined : `;${match[5]}`);
+								formattedLine += getConditionalValue(lineLength, formattedLine.substring(match[1].length), match[5] ? `;${match[5]}` : undefined);
 
 								break;
 							}
 
 							case LineType.command: {
 								const match = commandRegex.exec(line.text);
-								if (match === null) { printCouldNotMatchWarning(); continue; }
+								if (!match) { printCouldNotMatchWarning(); continue; }
 
 								function formatInstruction(cmd: string): string {
 									const parsedInstruction = instructionRegex.exec(cmd);
 									return parsedInstruction === null ? cmd : `${parsedInstruction[1]} ${parsedInstruction[2]}`;
 								}
 
-								var formattedLine = `${match[1]}${formatInstruction(match[2])}${getConditionalValue(instructionLength, match[2], match[3])}${match[4] === undefined ? '' : ','}${match[3] === undefined ? '' : getConditionalValue(operand1Length, match[3], match[4])}`;
+								var formattedLine = `${match[1]}${formatInstruction(match[2])}${getConditionalValue(instructionLength, match[2], match[3])}${match[4] ? ',' : ''}${match[3] ? getConditionalValue(operand1Length, match[3], match[4]) : ''}`;
 
-								formattedLine += getConditionalValue(lineLength, formattedLine.substring(match[1].length), match[5] === undefined ? undefined : `;${match[5]}`);
+								formattedLine += getConditionalValue(lineLength, formattedLine.substring(match[1].length), match[5] ? `;${match[5]}` : undefined);
 
 								break;
 							}
