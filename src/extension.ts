@@ -6,10 +6,10 @@ import * as vscode from 'vscode';
 const valueRegex = /((?:[^\s;,]|[^,;]+(?=[^ ;]))+)/;
 const commentRegex = / *;?(.*)$/;
 const defineRegex = RegExp(/^(\s*)%define +(\S+) +/.source + valueRegex.source + commentRegex.source);
-const labelRegex = RegExp(/^(\s*)(\S+) +(db|dw|dd|dq|equ) +/.source + valueRegex.source + commentRegex.source);
+const labelRegex = RegExp(/^(\s*)(\S+) +(db|dw|dd|dq|equ) +((?:\S+|\s*(?!\s*;))+)/.source + commentRegex.source);
 const instructionRegex = /(\S+) +(\S+)/; // This is different than the regex on the following line
 const commandRegex = RegExp(/^(\s*)((?:(?:lock|repe?|repne) +)?[^\s;%\.:]+(?!\S*:))/.source + ("(?: +" + valueRegex.source + ("(?: *, *" + valueRegex.source + ")?)?")) + commentRegex.source);
-const validLineRegex = RegExp(`(?<!\\[)(?:${defineRegex.source}|${labelRegex.source}|${commandRegex.source})`);
+const validLineRegex = RegExp(`^(?!\\[)(?:${defineRegex.source}|${labelRegex.source}|${commandRegex.source})`);
 
 enum LineType { define, label, command }
 
@@ -46,6 +46,8 @@ function findSectionEnd(document: vscode.TextDocument, lineRangeStart: number): 
 // this method is called when your extension is activated
 // your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
+
+	console.log(labelRegex.source);
 
 	context.subscriptions.push(vscode.languages.registerDocumentFormattingEditProvider(['asm', 'masm', 'mips', 'nasm'], {
 		provideDocumentFormattingEdits(document: vscode.TextDocument): vscode.TextEdit[] {
@@ -229,6 +231,8 @@ export function activate(context: vscode.ExtensionContext) {
 									return parsedInstruction === null ? cmd : `${parsedInstruction[1]} ${parsedInstruction[2]}`;
 								}
 
+								// Uncomment to align commas
+								// var formattedLine = `${match[1]}${formatInstruction(match[2])}${getConditionalValue(instructionLength, formatInstruction(match[2]), match[3])}${getConditionalValue(operand1Length-1, match[3], match[4] ? ',' : undefined)}${match[4] ? ` ${match[4]}` : ''}`;
 								var formattedLine = `${match[1]}${formatInstruction(match[2])}${getConditionalValue(instructionLength, formatInstruction(match[2]), match[3])}${match[4] ? ',' : ''}${match[3] ? getConditionalValue(operand1Length, match[3], match[4]) : ''}`;
 
 								formattedLine += getConditionalValue(lineLength, formattedLine.substring(match[1].length), match[5] ? `;${match[5]}` : undefined);
