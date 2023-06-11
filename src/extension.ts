@@ -5,16 +5,16 @@ import * as vscode from 'vscode';
 // For simplicity, we only support spaces between tokens, so we don't use \s
 const valueRegex = /((?:[^\s;,]|[^,;]+(?=[^ ;]))+)/;
 const commentRegex = / *;?(.*)$/;
-const defineRegex = RegExp(/^(\s*)%define *(\S+) */.source + valueRegex.source + commentRegex.source);
+const defineRegex = RegExp(/^(\s*)%define +(\S+) +/.source + valueRegex.source + commentRegex.source);
 const labelRegex = RegExp(/^(\s*)(\S+) +(db|dw|dd|dq|equ) +/.source + valueRegex.source + commentRegex.source);
 const instructionRegex = /([^\s;]+) +([^\s;]+)(?! *,)/; // This is slightly different than the regex on the following line
-const commandRegex = RegExp(/^(\s*)((?<!%)[^\s;]+(?! *:)(?: +[^\s;,]+(?= *;| +[^\s,]))?)/.source + ("(?: +" + valueRegex.source + ("(?: *, *" + valueRegex.source + ")?)?")) + commentRegex.source);
+const commandRegex = RegExp(/^(\s*)([^\s;%\.]+(?! *:)(?: +[^\s;,\.]+(?= *;| +[^\s,]))?)/.source + ("(?: +" + valueRegex.source + ("(?: *, *" + valueRegex.source + ")?)?")) + commentRegex.source);
 const validLineRegex = RegExp(`(?<!\\[)(?:${defineRegex.source}|${labelRegex.source}|${commandRegex.source})`);
 
 enum LineType { define, label, command }
 
 function getLineWhitespaceCount(line: string, tabSize: number): number {
-	return validLineRegex.exec(line)?.[1]?.replaceAll("\t", " ".repeat(tabSize)).length ?? 0;
+	return /^(\s*)\S/.exec(line)?.[1]?.replaceAll("\t", " ".repeat(tabSize)).length ?? 0;
 }
 
 function getLineType(line: string): LineType | undefined {
@@ -34,8 +34,9 @@ function findSectionEnd(document: vscode.TextDocument, lineRangeStart: number): 
 
 	for (var lineRangeEnd = lineRangeStart; lineRangeEnd < document.lineCount; lineRangeEnd++) {
 		const line = document.lineAt(lineRangeEnd);
-		if (!validLineRegex.test(line.text)) { continue; }
+		// if (line.isEmptyOrWhitespace) { continue; }
 		if (getLineWhitespaceCount(line.text, tabSize) !== leadingWhitespaceCount) { break; }
+		if (!validLineRegex.test(line.text)) { continue; }
 		if (getLineType(line.text) !== lineType) { break; }
 	}
 
@@ -60,8 +61,6 @@ export function activate(context: vscode.ExtensionContext) {
 				const lineRangeEnd = findSectionEnd(document, lineRangeStart);
 				let line = document.lineAt(lineRangeStart);
 				const lineType = getLineType(line.text);
-
-				console.log(`Lines ${lineRangeStart} to ${lineRangeEnd} are of type: ${lineType?.toString()}!`)
 
 				function printCouldNotMatchWarning() { console.warn(`Could not match line \"${line.text}\" to expected regex ${lineType}!`); }
 
@@ -203,7 +202,7 @@ export function activate(context: vscode.ExtensionContext) {
 								const match = defineRegex.exec(line.text);
 								if (!match) { printCouldNotMatchWarning(); continue; }
 
-								var formattedLine = `${match[1]}%define ${match[2]}${" ".repeat(nameLength - match[2].length + 1)}${match[3]}`;
+								var formattedLine = `${match[1]}%define${match[2]}${" ".repeat(nameLength - match[2].length + 1)}${match[3]}`;
 
 								formattedLine += getConditionalValue(lineLength, formattedLine.substring(match[1].length), match[4] ? `;${match[4]}` : undefined);
 
@@ -230,7 +229,7 @@ export function activate(context: vscode.ExtensionContext) {
 									return parsedInstruction === null ? cmd : `${parsedInstruction[1]} ${parsedInstruction[2]}`;
 								}
 
-								var formattedLine = `${match[1]}${formatInstruction(match[2])}${getConditionalValue(instructionLength, match[2], match[3])}${match[4] ? ',' : ''}${match[3] ? getConditionalValue(operand1Length, match[3], match[4]) : ''}`;
+								var formattedLine = `${match[1]}${formatInstruction(match[2])}${getConditionalValue(instructionLength, formatInstruction(match[2]), match[3])}${match[4] ? ',' : ''}${match[3] ? getConditionalValue(operand1Length, match[3], match[4]) : ''}`;
 
 								formattedLine += getConditionalValue(lineLength, formattedLine.substring(match[1].length), match[5] ? `;${match[5]}` : undefined);
 
