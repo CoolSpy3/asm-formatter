@@ -7,8 +7,8 @@ const valueRegex = /((?:[^\s;,]|[^,;]+(?=[^ ;]))+)/;
 const commentRegex = / *;?(.*)$/;
 const defineRegex = RegExp(/^(\s*)%define +(\S+) +/.source + valueRegex.source + commentRegex.source);
 const labelRegex = RegExp(/^(\s*)(\S+) +(db|dw|dd|dq|equ) +/.source + valueRegex.source + commentRegex.source);
-const instructionRegex = /([^\s;]+) +([^\s;]+)(?! *,)/; // This is slightly different than the regex on the following line
-const commandRegex = RegExp(/^(\s*)([^\s;%\.]+(?! *:)(?: +[^\s;,\.]+(?= *;| +[^\s,]))?)/.source + ("(?: +" + valueRegex.source + ("(?: *, *" + valueRegex.source + ")?)?")) + commentRegex.source);
+const instructionRegex = /(\S+) +(\S+)/; // This is different than the regex on the following line
+const commandRegex = RegExp(/^(\s*)((?:(?:lock|repe?|repne) +)?[^\s;%\.:]+(?!\S*:))/.source + ("(?: +" + valueRegex.source + ("(?: *, *" + valueRegex.source + ")?)?")) + commentRegex.source);
 const validLineRegex = RegExp(`(?<!\\[)(?:${defineRegex.source}|${labelRegex.source}|${commandRegex.source})`);
 
 enum LineType { define, label, command }
@@ -143,7 +143,7 @@ export function activate(context: vscode.ExtensionContext) {
 								nameLength = Math.max(nameLength, match[2].length);
 								valueLength = Math.max(valueLength, match[3].length);
 
-								lineLength = Math.max(lineLength, `%define ${match[2]} ${match[3]}`.length);
+								lineLength = Math.max(lineLength, `%define `.length + nameLength + 1 + valueLength);
 								break;
 							}
 
@@ -155,7 +155,7 @@ export function activate(context: vscode.ExtensionContext) {
 								typeLength = Math.max(typeLength, match[3].length);
 								valueLength = Math.max(valueLength, match[4].length);
 
-								lineLength = Math.max(lineLength, `${match[2]} ${match[3]} ${match[4]}`.length);
+								lineLength = Math.max(lineLength, nameLength + 1 + typeLength + 1 + valueLength);
 								break;
 							}
 
@@ -213,7 +213,7 @@ export function activate(context: vscode.ExtensionContext) {
 								const match = labelRegex.exec(line.text);
 								if (!match) { printCouldNotMatchWarning(); continue; }
 
-								var formattedLine = `${match[1]}${match[2]}${" ".repeat(nameLength - match[2].length + 1)}${match[3]}${" ".repeat(typeLength - match[3].length + 1)}${match[4]}`;
+								var formattedLine = `${match[1]}${match[2]}${getConditionalValue(nameLength, match[2], match[3])}${getConditionalValue(typeLength, match[3], match[4])}`;
 
 								formattedLine += getConditionalValue(lineLength, formattedLine.substring(match[1].length), match[5] ? `;${match[5]}` : undefined);
 
