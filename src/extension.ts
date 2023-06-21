@@ -1,33 +1,20 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
+import { formatLine, getLineType, getParams, updateParams } from './formatting';
 
-// For simplicity, we only support spaces between tokens, so we don't use \s
-const valueRegex = /((?:[^\s;,]|[^,;]+(?=[^ ;]))+)/;
-const commentRegex = / *;?(.*)$/;
-const defineRegex = RegExp(/^(\s*)%define +(\S+) +/.source + valueRegex.source + commentRegex.source);
-const labelRegex = RegExp(/^(\s*)(\S+) +(db|dw|dd|dq|equ) +((?:\S+|\s*(?!\s*;))+)/.source + commentRegex.source);
-const instructionRegex = /(\S+) +(\S+)/; // This is different than the regex on the following line
-const commandRegex = RegExp(/^(\s*)((?:(?:lock|repe?|repne) +)?[^\s;%\.:]+(?!\S*:))/.source + ("(?: +" + valueRegex.source + ("(?: *, *" + valueRegex.source + ")?)?")) + commentRegex.source);
-const validLineRegex = RegExp(`^(?!\\[)(?:${defineRegex.source}|${labelRegex.source}|${commandRegex.source})`);
-
-enum LineType { define, label, command }
-
-function getLineWhitespaceCount(line: string, tabSize: number): number {
-	return /^(\s*)\S/.exec(line)?.[1]?.replaceAll("\t", " ".repeat(tabSize)).length ?? 0;
+function getTabSize(): number {
+    const tabSizeOrAuto = vscode.window.activeTextEditor?.options.tabSize ?? 4;
+    return typeof tabSizeOrAuto === 'string' ? 4 : tabSizeOrAuto;
 }
 
-function getLineType(line: string): LineType | undefined {
-	if (defineRegex.test(line)) { return LineType.define; }
-	if (labelRegex.test(line)) { return LineType.label; }
-	if (commandRegex.test(line)) { return LineType.command; }
-	return undefined;
+function getLineWhitespaceCount(line: string, tabSize: number = getTabSize()): number {
+    return /^(\s*)\S/.exec(line)?.[1]?.replaceAll("\t", " ".repeat(tabSize)).length ?? 0;
 }
 
 function findSectionEnd(document: vscode.TextDocument, lineRangeStart: number): number {
 
-	const tabSizeOrAuto = vscode.window.activeTextEditor?.options.tabSize ?? 4;
-	const tabSize = typeof tabSizeOrAuto === 'string' ? 4 : tabSizeOrAuto;
+	const tabSize = getTabSize();
 
 	const leadingWhitespaceCount = getLineWhitespaceCount(document.lineAt(lineRangeStart).text, tabSize);
 	const lineType = getLineType(document.lineAt(lineRangeStart).text);
@@ -36,7 +23,7 @@ function findSectionEnd(document: vscode.TextDocument, lineRangeStart: number): 
 		const line = document.lineAt(lineRangeEnd);
 		// if (line.isEmptyOrWhitespace) { continue; }
 		if (getLineWhitespaceCount(line.text, tabSize) !== leadingWhitespaceCount) { break; }
-		if (!validLineRegex.test(line.text)) { continue; }
+		if (!getLineType(line.text)) { continue; }
 		if (getLineType(line.text) !== lineType) { break; }
 	}
 
@@ -47,8 +34,6 @@ function findSectionEnd(document: vscode.TextDocument, lineRangeStart: number): 
 // your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
 
-	console.log(labelRegex.source);
-
 	context.subscriptions.push(vscode.languages.registerDocumentFormattingEditProvider(['asm', 'masm', 'mips', 'nasm'], {
 		provideDocumentFormattingEdits(document: vscode.TextDocument): vscode.TextEdit[] {
 			let edits: vscode.TextEdit[] = [];
@@ -57,197 +42,56 @@ export function activate(context: vscode.ExtensionContext) {
 
 			while (lineRangeStart < document.lineCount) {
 
-				while (!validLineRegex.test(document.lineAt(lineRangeStart).text)) { lineRangeStart++; }
+				while (lineRangeStart < document.lineCount && !getLineType(document.lineAt(lineRangeStart).text)) { lineRangeStart++; }
 				if (lineRangeStart >= document.lineCount) { break; }
 
 				const lineRangeEnd = findSectionEnd(document, lineRangeStart);
 				let line = document.lineAt(lineRangeStart);
 				const lineType = getLineType(line.text);
 
-				function printCouldNotMatchWarning() { console.warn(`Could not match line \"${line.text}\" to expected regex ${lineType}!`); }
-
-				let nameLength = 0;
-				let typeLength = 0;
-				let valueLength = 0;
-				let instructionLength = 0;
-				let singleOperandLength = 0;
-				let operand1Length = 0;
-				let operand2Length = 0;
-				let lineLength = 0;
-
-				// Calculate all of the above lengths (if applicable)
-				{
-					switch (lineType) {
-						case LineType.define: {
-							const match = defineRegex.exec(line.text);
-							if (!match) { printCouldNotMatchWarning(); continue; }
-
-							nameLength = match[2].length;
-							valueLength = match[3].length;
-
-							lineLength = `%define ${match[2]} ${match[3]}`.length;
-							break;
-						}
-
-						case LineType.label: {
-							const match = labelRegex.exec(line.text);
-							if (!match) { printCouldNotMatchWarning(); continue; }
-
-							nameLength = match[2].length;
-							typeLength = match[3].length;
-							valueLength = match[4].length;
-
-							lineLength = `${match[2]} ${match[3]} ${match[4]}`.length;
-							break;
-						}
-
-						case LineType.command: {
-							const match = commandRegex.exec(line.text);
-							if (!match) { printCouldNotMatchWarning(); continue; }
-
-							instructionLength = match[2].length;
-
-							if (match[4]) {
-								operand1Length = match[3].length;
-								operand2Length = match[4].length;
-							} else {
-								singleOperandLength = match[3]?.length ?? 0;
-							}
-
-							if (!match[3]) {
-								lineLength = match[2].length;
-							} else if (!match[4]) {
-								lineLength = `${match[2]} ${match[3]}`.length;
-							} else {
-								lineLength = `${match[2]} ${match[3]}, ${match[4]}`.length;
-							}
-
-							break;
-						}
-
-						default: {
-							console.warn(`Could not identify line \"${line.text}\" despite being identified as a valid line! Skipping to line ${lineRangeEnd}...`);
-							lineRangeStart = lineRangeEnd;
-							continue;
-						}
-					}
-
-					for (let i = lineRangeStart + 1; i < lineRangeEnd; i++) {
-
-						line = document.lineAt(i);
-						if (!validLineRegex.test(line.text)) { continue; }
-
-						switch (lineType) {
-							case LineType.define: {
-								const match = defineRegex.exec(line.text);
-								if (!match) { printCouldNotMatchWarning(); continue; }
-
-								nameLength = Math.max(nameLength, match[2].length);
-								valueLength = Math.max(valueLength, match[3].length);
-
-								lineLength = Math.max(lineLength, `%define `.length + nameLength + 1 + valueLength);
-								break;
-							}
-
-							case LineType.label: {
-								const match = labelRegex.exec(line.text);
-								if (!match) { printCouldNotMatchWarning(); continue; }
-
-								nameLength = Math.max(nameLength, match[2].length);
-								typeLength = Math.max(typeLength, match[3].length);
-								valueLength = Math.max(valueLength, match[4].length);
-
-								lineLength = Math.max(lineLength, nameLength + 1 + typeLength + 1 + valueLength);
-								break;
-							}
-
-							case LineType.command: {
-								const match = commandRegex.exec(line.text);
-								if (!match) { printCouldNotMatchWarning(); continue; }
-
-								instructionLength = Math.max(instructionLength, match[2].length);
-
-								if (match[4]) {
-									operand1Length = Math.max(operand1Length, match[3].length);
-									operand2Length = Math.max(operand2Length, match[4].length);
-								} else {
-									singleOperandLength = Math.max(singleOperandLength, match[3]?.length ?? 0);
-								}
-
-								lineLength = Math.max(lineLength, instructionLength + singleOperandLength + 1); // +1 for the space between the instruction and the operand
-								lineLength = Math.max(lineLength, instructionLength + operand1Length + operand2Length + 3); // +3 for the spaces between the instruction and the operands and the comma
-
-								break;
-							}
-
-							default: {
-								printCouldNotMatchWarning();
-								continue;
-							}
-						}
-
-					}
+				if(!lineType) {
+					console.warn(`Could not identify line \"${line.text}\" despite being identified as a valid line! Skipping to line ${lineRangeEnd}...`);
+					lineRangeStart = lineRangeEnd;
+					continue;
 				}
 
-				// Apply the calculated lengths
-				{
-					function getConditionalValue(sectionLength: number, prevValue: string, match: string | undefined): string {
-						return match ? `${" ".repeat(sectionLength - prevValue.length + 1)}${match}` : '';
+				function printCouldNotMatchWarning() {
+					console.warn(`Could not match line \"${line.text}\" to type ${lineType}!`);
+				}
+
+				// Calculate lengths
+				let params = getParams(line.text, lineType);
+
+				if(!params) {
+					console.warn(`Could not identify line \"${line.text}\" despite being identified as a valid line! Skipping to line ${lineRangeEnd}...`);
+					lineRangeStart = lineRangeEnd;
+					continue;
+				}
+
+				for (let i = lineRangeStart + 1; i < lineRangeEnd; i++) {
+
+					line = document.lineAt(i);
+					if (!getLineType(line.text)) { continue; }
+
+					let nParams = getParams(line.text, lineType);
+
+					if(!nParams) {
+						printCouldNotMatchWarning();
+						continue;
 					}
 
-					for (let i = lineRangeStart; i < lineRangeEnd; i++) {
-						line = document.lineAt(i);
-						if (!validLineRegex.test(line.text)) { continue; }
+					updateParams(params, nParams);
 
-						switch (lineType) {
-							case LineType.define: {
-								const match = defineRegex.exec(line.text);
-								if (!match) { printCouldNotMatchWarning(); continue; }
+				}
 
-								var formattedLine = `${match[1]}%define${match[2]}${" ".repeat(nameLength - match[2].length + 1)}${match[3]}`;
+				// Apply Formatting
+				for (let i = lineRangeStart; i < lineRangeEnd; i++) {
+					line = document.lineAt(i);
+					if (!getLineType(line.text)) { continue; }
 
-								formattedLine += getConditionalValue(lineLength, formattedLine.substring(match[1].length), match[4] ? `;${match[4]}` : undefined);
+					let formattedLine = formatLine(line.text, lineType, params);
 
-								break;
-							}
-
-							case LineType.label: {
-								const match = labelRegex.exec(line.text);
-								if (!match) { printCouldNotMatchWarning(); continue; }
-
-								var formattedLine = `${match[1]}${match[2]}${getConditionalValue(nameLength, match[2], match[3])}${getConditionalValue(typeLength, match[3], match[4])}`;
-
-								formattedLine += getConditionalValue(lineLength, formattedLine.substring(match[1].length), match[5] ? `;${match[5]}` : undefined);
-
-								break;
-							}
-
-							case LineType.command: {
-								const match = commandRegex.exec(line.text);
-								if (!match) { printCouldNotMatchWarning(); continue; }
-
-								function formatInstruction(cmd: string): string {
-									const parsedInstruction = instructionRegex.exec(cmd);
-									return parsedInstruction === null ? cmd : `${parsedInstruction[1]} ${parsedInstruction[2]}`;
-								}
-
-								// Uncomment to align commas
-								// var formattedLine = `${match[1]}${formatInstruction(match[2])}${getConditionalValue(instructionLength, formatInstruction(match[2]), match[3])}${getConditionalValue(operand1Length-1, match[3], match[4] ? ',' : undefined)}${match[4] ? ` ${match[4]}` : ''}`;
-								var formattedLine = `${match[1]}${formatInstruction(match[2])}${getConditionalValue(instructionLength, formatInstruction(match[2]), match[3])}${match[4] ? ',' : ''}${match[3] ? getConditionalValue(operand1Length, match[3], match[4]) : ''}`;
-
-								formattedLine += getConditionalValue(lineLength, formattedLine.substring(match[1].length), match[5] ? `;${match[5]}` : undefined);
-
-								break;
-							}
-
-							default: {
-								printCouldNotMatchWarning();
-								continue;
-							}
-						}
-
-						if (line.text !== formattedLine) { edits.push(vscode.TextEdit.replace(line.range, formattedLine)); }
-					}
+					if (formattedLine && line.text !== formattedLine) { edits.push(vscode.TextEdit.replace(line.range, formattedLine)); }
 				}
 
 				lineRangeStart = lineRangeEnd;
