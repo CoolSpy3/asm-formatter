@@ -4,12 +4,12 @@ import * as vscode from 'vscode';
 import { formatLine, getLineType, getParams, updateParams } from './formatting';
 
 function getTabSize(): number {
-    const tabSizeOrAuto = vscode.window.activeTextEditor?.options.tabSize ?? 4;
-    return typeof tabSizeOrAuto === 'string' ? 4 : tabSizeOrAuto;
+	const tabSizeOrAuto = vscode.window.activeTextEditor?.options.tabSize ?? 4;
+	return typeof tabSizeOrAuto === 'string' ? 4 : tabSizeOrAuto;
 }
 
 function getLineWhitespaceCount(line: string, tabSize: number = getTabSize()): number {
-    return /^(\s*)\S/.exec(line)?.[1]?.replaceAll("\t", " ".repeat(tabSize)).length ?? 0;
+	return /^(\s*)\S/.exec(line)?.[1]?.replaceAll("\t", " ".repeat(tabSize)).length ?? 0;
 }
 
 function findSectionEnd(document: vscode.TextDocument, lineRangeStart: number): number {
@@ -49,7 +49,7 @@ export function activate(context: vscode.ExtensionContext) {
 				let line = document.lineAt(lineRangeStart);
 				const lineType = getLineType(line.text);
 
-				if(!lineType) {
+				if (!lineType) {
 					console.warn(`Could not identify line \"${line.text}\" despite being identified as a valid line! Skipping to line ${lineRangeEnd}...`);
 					lineRangeStart = lineRangeEnd;
 					continue;
@@ -62,7 +62,7 @@ export function activate(context: vscode.ExtensionContext) {
 				// Calculate lengths
 				let params = getParams(line.text, lineType);
 
-				if(!params) {
+				if (!params) {
 					console.warn(`Could not identify line \"${line.text}\" despite being identified as a valid line! Skipping to line ${lineRangeEnd}...`);
 					lineRangeStart = lineRangeEnd;
 					continue;
@@ -75,7 +75,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 					let nParams = getParams(line.text, lineType);
 
-					if(!nParams) {
+					if (!nParams) {
 						printCouldNotMatchWarning();
 						continue;
 					}

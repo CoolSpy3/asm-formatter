@@ -113,7 +113,7 @@ export function formatLabel(line: string, params: number[]): string | undefined 
     if (params[2] === -1) { params[2] = value.length; }
     params[3] = params[0] + (params[0] === 0 ? 0 : 1) + params[1] + 1 + params[2];
 
-    if(name.length === 0) {
+    if (name.length === 0) {
         return `${whitespace}${applyComment(`${match[3]}${spacedValue(value, params[0] === 0 ? params[1] : params[0] + 1 + params[1], match[3])}`, params[3], comment)}`;
     } else {
         return `${whitespace}${applyComment(`${name}${spacedValue(match[3], params[0], name)}${spacedValue(value, params[1], match[3])}`, params[3], comment)}`;
