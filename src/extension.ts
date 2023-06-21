@@ -23,7 +23,7 @@ function findSectionEnd(document: vscode.TextDocument, lineRangeStart: number): 
 		const line = document.lineAt(lineRangeEnd);
 		// if (line.isEmptyOrWhitespace) { continue; }
 		if (getLineWhitespaceCount(line.text, tabSize) !== leadingWhitespaceCount) { break; }
-		if (!getLineType(line.text)) { continue; }
+		if (getLineType(line.text) === undefined) { continue; }
 		if (getLineType(line.text) !== lineType) { break; }
 	}
 
@@ -42,14 +42,14 @@ export function activate(context: vscode.ExtensionContext) {
 
 			while (lineRangeStart < document.lineCount) {
 
-				while (lineRangeStart < document.lineCount && !getLineType(document.lineAt(lineRangeStart).text)) { lineRangeStart++; }
+				while (lineRangeStart < document.lineCount && getLineType(document.lineAt(lineRangeStart).text) === undefined) { lineRangeStart++; }
 				if (lineRangeStart >= document.lineCount) { break; }
 
 				const lineRangeEnd = findSectionEnd(document, lineRangeStart);
 				let line = document.lineAt(lineRangeStart);
 				const lineType = getLineType(line.text);
 
-				if (!lineType) {
+				if (lineType === undefined) {
 					console.warn(`Could not identify line \"${line.text}\" despite being identified as a valid line! Skipping to line ${lineRangeEnd}...`);
 					lineRangeStart = lineRangeEnd;
 					continue;
@@ -71,7 +71,7 @@ export function activate(context: vscode.ExtensionContext) {
 				for (let i = lineRangeStart + 1; i < lineRangeEnd; i++) {
 
 					line = document.lineAt(i);
-					if (!getLineType(line.text)) { continue; }
+					if (getLineType(line.text) === undefined) { continue; }
 
 					let nParams = getParams(line.text, lineType);
 
@@ -87,7 +87,7 @@ export function activate(context: vscode.ExtensionContext) {
 				// Apply Formatting
 				for (let i = lineRangeStart; i < lineRangeEnd; i++) {
 					line = document.lineAt(i);
-					if (!getLineType(line.text)) { continue; }
+					if (getLineType(line.text) === undefined) { continue; }
 
 					let formattedLine = formatLine(line.text, lineType, params);
 
