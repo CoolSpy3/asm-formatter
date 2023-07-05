@@ -1,13 +1,17 @@
 {
   "name": "asm-formatter",
-	"displayName": "asm-formatter",
+	"displayName": "CoolSpy3's Assembly Formatter",
 	"description": "Formats assembly code",
-	"version": "0.0.1",
+	"version": "1.0.0",
+	"publisher": "CoolSpy3",
 	"engines": {
 		"vscode": "^1.78.0"
 	},
 	"categories": [
 		"Formatters"
+	],
+	"keywords": [
+		"asm", "assembly", "formatter", "nasm", "masm", "mips"
 	],
 	"main": "./dist/extension.js",
 	"activationEvents": [
@@ -16,6 +20,10 @@
 		"onLanguage:mips",
 		"onLanguage:nasm"
 	],
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/CoolSpy3/asm-formatter.git"
+	},
 	"scripts": {
 		"vscode:prepublish": "npm run package",
 		"compile": "webpack",
