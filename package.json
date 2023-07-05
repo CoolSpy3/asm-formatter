@@ -1,5 +1,5 @@
 {
-  "name": "asm-formatter",
+  "name": "coolspy3-asm-formatter",
 	"displayName": "CoolSpy3's Assembly Formatter",
 	"description": "Formats assembly code",
 	"version": "1.0.0",

@@ -25,4 +25,4 @@ For `db/dw/dd/dq` statements, if there is no leading label or times statement, t
 
 ### 1.0.0
 
-Initial release of asm-formatter-coolspy3
+Initial release of coolspy3-asm-formatter
