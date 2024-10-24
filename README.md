@@ -23,6 +23,9 @@ For `db/dw/dd/dq` statements, if there is no leading label or times statement, t
 
 ## Release Notes
 
+### 1.0.1
+Updated dependencies
+
 ### 1.0.0
 
 Initial release of coolspy3-asm-formatter

@@ -1,9 +1,8 @@
 # Change Log
 
-All notable changes to the "asm-formatter" extension will be documented in this file.
+### 1.0.1
+Updated dependencies
 
-Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
+### 1.0.0
 
-## [Unreleased]
-
-- Initial release
+Initial release of coolspy3-asm-formatter
